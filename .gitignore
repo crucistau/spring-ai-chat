@@ -1,0 +1,61 @@
+# ========================
+# Java / Maven
+# ========================
+server/target/
+!.mvn/wrapper/maven-wrapper.jar
+*.jar
+*.war
+*.ear
+*.class
+*.log
+*.gz
+
+# ========================
+# Node / Frontend
+# ========================
+web/node_modules/
+web/dist/
+web/.vite/
+
+# ========================
+# IDE
+# ========================
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ========================
+# OS
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========================
+# Environment / Secrets
+# ========================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+application-local.yml
+
+# ========================
+# Claude Code
+# ========================
+.claude/
+
+# ========================
+# Build
+# ========================
+build/
+out/
