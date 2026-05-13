@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: chat-backend:latest
+    container_name: chat-backend
+    ports:
+      - "8899:8899"
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    image: chat-frontend:latest
+    container_name: chat-frontend
+    ports:
+      - "${FRONTEND_PORT:-9090}:80"
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+    depends_on:
+      - backend
