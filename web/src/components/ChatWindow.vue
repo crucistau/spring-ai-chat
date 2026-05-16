@@ -1,6 +1,7 @@
 <template>
   <div class="chat-window">
-    <div class="messages" ref="messagesContainer">
+    <div class="messages" ref="messagesContainer" @scroll="onScroll">
+      <div v-if="loadingMore" class="loading-more">加载中...</div>
       <div v-if="messages.length === 0" class="empty-state">
         <div class="empty-card">
           <p class="empty-title">开始一段新对话</p>
@@ -35,6 +36,9 @@ const emit = defineEmits(['conversation-created', 'login-required'])
 const messages = ref([])
 const messagesContainer = ref(null)
 const loading = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const currentPage = ref(1)
 const notice = ref('')
 
 function scrollToBottom() {
@@ -48,18 +52,59 @@ function scrollToBottom() {
 async function loadHistory(conversationId) {
   if (!conversationId) {
     messages.value = []
+    hasMore.value = false
+    currentPage.value = 1
     return
   }
   try {
-    const data = await getMessages(conversationId)
-    messages.value = data.map(m => ({
+    currentPage.value = 1
+    const data = await getMessages(conversationId, 1, 20)
+    messages.value = data.messages.map(m => ({
       id: m.id,
       role: m.role,
-      content: m.content
+      content: m.content,
+      createdAt: m.createdAt
     }))
+    hasMore.value = data.hasMore
     scrollToBottom()
   } catch (err) {
     console.error('Load history failed:', err)
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value || !props.conversationId) return
+  loadingMore.value = true
+  try {
+    currentPage.value += 1
+    const prevScrollHeight = messagesContainer.value.scrollHeight
+    const data = await getMessages(props.conversationId, currentPage.value, 20)
+    const older = data.messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      createdAt: m.createdAt
+    }))
+    messages.value = [...older, ...messages.value]
+    hasMore.value = data.hasMore
+    nextTick(() => {
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight - prevScrollHeight
+      }
+    })
+  } catch (err) {
+    currentPage.value -= 1
+    console.error('Load more failed:', err)
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+function onScroll() {
+  const el = messagesContainer.value
+  if (!el || loadingMore.value || !hasMore.value) return
+  if (el.scrollTop < 80) {
+    loadMore()
   }
 }
 
@@ -78,7 +123,8 @@ async function handleSend(text) {
   const userMsg = {
     id: Date.now(),
     role: 'user',
-    content: text
+    content: text,
+    createdAt: new Date().toISOString()
   }
   messages.value.push(userMsg)
   scrollToBottom()
@@ -87,7 +133,8 @@ async function handleSend(text) {
   messages.value.push({
     id: assistantMessageId,
     role: 'assistant',
-    content: ''
+    content: '',
+    createdAt: new Date().toISOString()
   })
   loading.value = true
 
@@ -160,6 +207,13 @@ defineExpose({ clearMessages, loadHistory })
   font-size: 1.05rem;
   font-weight: 800;
   margin-bottom: 8px;
+}
+
+.loading-more {
+  text-align: center;
+  padding: 8px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
 .notice {

@@ -13,7 +13,7 @@ public interface ChatService {
 
     List<ConversationResponse> listConversations();
 
-    List<ChatMessageResponse> getMessages(String conversationId);
+    MessagePageResponse getMessages(String conversationId, int page, int size);
 
     void deleteConversation(String conversationId);
 

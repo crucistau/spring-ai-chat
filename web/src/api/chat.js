@@ -65,8 +65,10 @@ export async function listConversations() {
     return response.data
 }
 
-export async function getMessages(conversationId) {
-    const response = await http.get(`${CONV_BASE}/${conversationId}/messages`)
+export async function getMessages(conversationId, page = 1, size = 20) {
+    const response = await http.get(`${CONV_BASE}/${conversationId}/messages`, {
+        params: { page, size }
+    })
     return response.data
 }
 

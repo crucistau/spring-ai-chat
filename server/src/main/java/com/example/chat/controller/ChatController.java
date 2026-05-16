@@ -34,8 +34,11 @@ public class ChatController {
     }
 
     @GetMapping("/conversations/{id}/messages")
-    public ApiResult<List<ChatMessageResponse>> getMessages(@PathVariable String id) {
-        return ApiResult.ok(chatService.getMessages(id));
+    public ApiResult<MessagePageResponse> getMessages(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResult.ok(chatService.getMessages(id, page, size));
     }
 
     @DeleteMapping("/conversations/{id}")

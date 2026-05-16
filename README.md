@@ -1,21 +1,22 @@
+
 # Spring AI Chat
 
 基于 **Spring Boot 3.4 + Spring AI** 大模型的前后端分离 AI 对话应用。
 
 ## 技术栈
 
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| 后端框架 | Spring Boot | 3.4.5 |
-| AI 集成 | Spring AI (spring-ai-starter-model-deepseek) | 1.0.0 |
-| 大模型 | DeepSeek (deepseek-chat) | - |
-| 持久层 | MyBatis-Plus | 3.5.9 |
-| 数据库 | MySQL | 8.0+ |
-| 前端框架 | Vue 3 | 3.5.x |
-| 构建工具 | Vite | 6.x |
-| HTTP 客户端 | Axios | 1.9.x |
-| Markdown 渲染 | markdown-it + highlight.js | - |
-| JDK | OpenJDK | 17+ |
+| 层级          | 技术                                           | 版本    |
+| ----------- | -------------------------------------------- | ----- |
+| 后端框架        | Spring Boot                                  | 3.4.5 |
+| AI 集成       | Spring AI (spring-ai-starter-model-deepseek) | 1.0.0 |
+| 大模型         | DeepSeek (deepseek-chat)                     | -     |
+| 持久层         | MyBatis-Plus                                 | 3.5.9 |
+| 数据库         | MySQL                                        | 8.0+  |
+| 前端框架        | Vue 3                                        | 3.5.x |
+| 构建工具        | Vite                                         | 6.x   |
+| HTTP 客户端    | Axios                                        | 1.9.x |
+| Markdown 渲染 | markdown-it + highlight.js                   | -     |
+| JDK         | OpenJDK                                      | 17+   |
 
 ## 项目结构
 
@@ -132,22 +133,22 @@ PUT    /api/conversations/{id}/title           # 重命名会话
 
 ### conversation 表（会话）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | VARCHAR(36) PK | 会话 ID (UUID) |
-| title | VARCHAR(200) | 会话标题（取首条消息前 50 字） |
-| created_at | DATETIME | 创建时间 |
-| updated_at | DATETIME | 更新时间（自动维护） |
+| 字段         | 类型             | 说明                |
+| ---------- | -------------- | ----------------- |
+| id         | VARCHAR(36) PK | 会话 ID (UUID)      |
+| title      | VARCHAR(200)   | 会话标题（取首条消息前 50 字） |
+| created_at | DATETIME       | 创建时间              |
+| updated_at | DATETIME       | 更新时间（自动维护）        |
 
 ### chat_message 表（消息）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT PK AUTO | 消息 ID |
-| conversation_id | VARCHAR(36) | 关联会话 ID（索引） |
-| role | VARCHAR(20) | 角色：user / assistant |
-| content | TEXT | 消息内容 |
-| created_at | DATETIME | 创建时间 |
+| 字段              | 类型             | 说明                  |
+| --------------- | -------------- | ------------------- |
+| id              | BIGINT PK AUTO | 消息 ID               |
+| conversation_id | VARCHAR(36)    | 关联会话 ID（索引）         |
+| role            | VARCHAR(20)    | 角色：user / assistant |
+| content         | TEXT           | 消息内容                |
+| created_at      | DATETIME       | 创建时间                |
 
 ## 快速开始
 
@@ -236,16 +237,16 @@ npm run dev
 
 后端核心配置项（`application.yml`）：
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| `spring.ai.deepseek.api-key` | DeepSeek API 密钥 | - |
-| `spring.ai.deepseek.chat.options.model` | 模型名称 | deepseek-chat |
-| `spring.ai.deepseek.chat.options.temperature` | 生成温度 (0-2) | 0.7 |
-| `spring.ai.deepseek.chat.options.max-tokens` | 最大生成 token 数 | 2048 |
-| `spring.datasource.url` | MySQL 连接地址 | localhost:3306/chatdb |
-| `spring.datasource.username` | 数据库用户名 | root |
-| `spring.datasource.password` | 数据库密码 | root |
-| `mybatis-plus.configuration.map-underscore-to-camel-case` | 驼峰命名映射 | true |
+| 配置项                                                       | 说明              | 默认值                   |
+| --------------------------------------------------------- | --------------- | --------------------- |
+| `spring.ai.deepseek.api-key`                              | DeepSeek API 密钥 | -                     |
+| `spring.ai.deepseek.chat.options.model`                   | 模型名称            | deepseek-chat         |
+| `spring.ai.deepseek.chat.options.temperature`             | 生成温度 (0-2)      | 0.7                   |
+| `spring.ai.deepseek.chat.options.max-tokens`              | 最大生成 token 数    | 2048                  |
+| `spring.datasource.url`                                   | MySQL 连接地址      | localhost:3306/chatdb |
+| `spring.datasource.username`                              | 数据库用户名          | root                  |
+| `spring.datasource.password`                              | 数据库密码           | root                  |
+| `mybatis-plus.configuration.map-underscore-to-camel-case` | 驼峰命名映射          | true                  |
 
 可选模型：`deepseek-chat`（通用对话）、`deepseek-reasoner`（深度推理）。
 
@@ -267,6 +268,52 @@ npm run build
 ```
 
 产物输出到 `web/dist/` 目录，可部署到 Nginx 或其他静态服务器。
+
+## 待实现 / 规划中 🚧
+
+
+
+### RAG 知识库
+
+- [ ] **文档加载 (Document Loading)** — 支持多种格式文档（TXT、PDF、Markdown 等）的加载与解析
+- [ ] **文本分割 (Text Splitting)** — 自定义 Token 文本分割器，支持按 Token 数、段落、句子等策略切分
+- [ ] **向量化存储 (Vector Store)** — 集成 PGVector / Chroma / Qdrant 等向量数据库，实现文档向量嵌入与存储
+- [ ] **查询增强 (Query Augmentation)** — 基于上下文查询增强器 (Contextual Query Augmenter) 和多查询扩展 (Multi-Query Expansion)，提升检索命中率
+- [ ] **关键词丰富 (Keyword Enrichment)** — 自动提取和扩充查询关键词，改善检索效果
+- [ ] **查询重写 (Query Rewriting)** — 对用户问题进行重写优化，适配向量检索
+- [ ] **RAG Advisor** — 通过 Spring AI Advisor 机制集成检索增强生成流程
+
+### Tool Calling（工具调用）
+
+- [ ] **联网搜索 (Web Search)** — 集成 SearchAPI / SerpAPI 等搜索引擎 API，让 AI 获取实时信息
+- [ ] **网页抓取 (Web Scraping)** — 基于 Jsoup 抓取指定网页内容，供 AI 分析
+- [ ] **文件操作 (File Operation)** — AI 读写本地文件，支持多种文件格式
+- [ ] **资源下载 (Resource Download)** — 从指定 URL 下载资源到本地
+- [ ] **终端操作 (Terminal Operation)** — AI 执行终端命令并获取输出结果
+- [ ] **PDF 生成 (PDF Generation)** — 基于 iText 库将 AI 输出生成为 PDF 文档
+- [ ] **终止工具 (Terminate Tool)** — 用于 AI 自主判断何时停止工具调用
+
+### MCP（模型上下文协议）
+
+- [ ] **MCP 客户端集成** — 支持通过 Spring AI MCP 接入任意 MCP 服务
+- [ ] **MCP 服务开发** — 自定义 MCP 服务端（如图片搜索 MCP 服务）
+- [ ] **MCP 最佳实践** — 安全性、部署、错误处理等
+
+### AI 智能体 (Agent)
+
+- [ ] **ReAct Agent** — 基于 Reasoning + Acting 循环模式的智能体框架
+- [ ] **ToolCall Agent** — 支持自主调用工具并处理结果的增强 Agent
+- [ ] **YuManus 自主规划 Agent** — 能根据用户目标自主推理、规划步骤、调用工具直到任务完成
+- [ ] **Agent 工作流** — 多步骤任务分解、执行状态追踪、步骤回溯
+
+### 增强功能
+
+- [ ] **自定义 Advisor** — 如日志记录 Advisor、重读提示 (Re-reading) Advisor 等
+- [ ] **对话记忆持久化** — 文件级 / 数据库级聊天记忆管理
+- [ ] **结构化输出** — 基于 Spring AI 结构化输出特性，生成格式化的恋爱报告/分析报告
+- [ ] **多模态交互** — 支持图片理解等多模态能力
+- [ ] **Prompt 模板** — 使用 Spring AI Prompt Template 管理复杂提示词
+- [ ] **大模型幻觉检测** — 引入评估机制检测 AI 生成内容的准确性
 
 ## 参考文档
 

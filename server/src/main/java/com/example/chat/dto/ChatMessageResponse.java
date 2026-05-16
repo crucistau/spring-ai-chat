@@ -1,8 +1,11 @@
 package com.example.chat.dto;
 
+import java.time.LocalDateTime;
+
 public record ChatMessageResponse(
         Long id,
         String role,
-        String content
+        String content,
+        LocalDateTime createdAt
 ) {
 }

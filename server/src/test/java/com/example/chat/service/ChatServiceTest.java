@@ -1,6 +1,7 @@
 package com.example.chat.service;
 
-import com.example.chat.dto.ChatRequest;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.chat.dto.*;
 import com.example.chat.entity.ChatMessage;
 import com.example.chat.entity.Conversation;
 import com.example.chat.mapper.ChatMessageMapper;
@@ -12,9 +13,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -36,17 +39,21 @@ class ChatServiceTest {
     private DeepSeekChatModel chatModel;
 
     @Mock
+    private ChatMemory chatMemory;
+
+    @Mock
     private ConversationMapper conversationMapper;
 
     @Mock
     private ChatMessageMapper chatMessageMapper;
 
-    @InjectMocks
     private ChatServiceImpl chatService;
 
     @BeforeEach
     void setUp() {
         UserContext.setUserId(1L);
+        ChatClient chatClient = ChatClient.builder(chatModel).build();
+        chatService = new ChatServiceImpl(chatClient, chatMemory, conversationMapper, chatMessageMapper);
     }
 
     @AfterEach
@@ -54,7 +61,7 @@ class ChatServiceTest {
         UserContext.clear();
     }
 
-    // ===== chat() 同步聊天 =====
+    // ===== chat() =====
 
     @Test
     void chat_newConversation_shouldCreateConversationAndReturnResponse() {
@@ -62,16 +69,12 @@ class ChatServiceTest {
 
         when(conversationMapper.selectById(anyString())).thenReturn(null);
         when(conversationMapper.insert(any(Conversation.class))).thenReturn(1);
-
         when(chatModel.call(any(Prompt.class))).thenReturn(mockAiResponse("Hi there!"));
 
         var response = chatService.chat(request);
 
         assertEquals("Hi there!", response.content());
-        assertEquals("deepseek-chat", response.model());
         assertNotNull(response.conversationId());
-
-        verify(chatMessageMapper, times(2)).insert(any(ChatMessage.class));
         verify(conversationMapper).insert(any(Conversation.class));
     }
 
@@ -80,7 +83,6 @@ class ChatServiceTest {
         ChatRequest request = new ChatRequest("hello", "existing-id");
 
         when(conversationMapper.selectById("existing-id")).thenReturn(new Conversation());
-        when(chatMessageMapper.selectList(any())).thenReturn(List.of());
         when(chatModel.call(any(Prompt.class))).thenReturn(mockAiResponse("reply"));
 
         var response = chatService.chat(request);
@@ -90,31 +92,12 @@ class ChatServiceTest {
     }
 
     @Test
-    void chat_shouldSaveUserAndAssistantMessages() {
-        ChatRequest request = new ChatRequest("hello", null);
-
-        when(conversationMapper.selectById(anyString())).thenReturn(null);
-        when(conversationMapper.insert(any(Conversation.class))).thenReturn(1);
-        when(chatModel.call(any(Prompt.class))).thenReturn(mockAiResponse("reply"));
-
-        chatService.chat(request);
-
-        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(chatMessageMapper, times(2)).insert(captor.capture());
-
-        List<ChatMessage> messages = captor.getAllValues();
-        assertEquals("user", messages.get(0).getRole());
-        assertEquals("hello", messages.get(0).getContent());
-        assertEquals("assistant", messages.get(1).getRole());
-        assertEquals("reply", messages.get(1).getContent());
-    }
-
-    @Test
     void chat_noCurrentUser_shouldThrow() {
         UserContext.clear();
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> chatService.chat(new ChatRequest("hello", null)));
+
         assertEquals("未登录", ex.getMessage());
     }
 
@@ -136,7 +119,7 @@ class ChatServiceTest {
         assertEquals(53, title.length());
     }
 
-    // ===== chatStream() 流式聊天 =====
+    // ===== chatStream() =====
 
     @Test
     void chatStream_shouldReturnSseEmitter() {
@@ -159,22 +142,6 @@ class ChatServiceTest {
                 () -> chatService.chatStream(new ChatRequest("hello", null)));
     }
 
-    @Test
-    void chatStream_shouldBuildPromptWithHistory() {
-        ChatRequest request = new ChatRequest("follow-up", "conv-1");
-
-        when(conversationMapper.selectById("conv-1")).thenReturn(new Conversation());
-        ChatMessage historyMsg = new ChatMessage("conv-1", "user", "previous");
-        when(chatMessageMapper.selectList(any())).thenReturn(List.of(historyMsg));
-        when(chatModel.stream(any(Prompt.class))).thenReturn(Flux.empty());
-
-        chatService.chatStream(request);
-
-        verify(chatMessageMapper).insert(argThat(msg ->
-                "user".equals(msg.getRole()) && "follow-up".equals(msg.getContent())
-        ));
-    }
-
     // ===== listConversations() =====
 
     @Test
@@ -192,15 +159,62 @@ class ChatServiceTest {
         assertEquals("Test", result.get(0).title());
     }
 
+    // ===== getMessages() =====
+
+    @Test
+    void getMessages_shouldReturnPaginatedResponse() {
+        ChatMessage msg = new ChatMessage();
+        msg.setId(1L);
+        msg.setRole("user");
+        msg.setContent("hello");
+        msg.setConversationId("conv-1");
+
+        Page<ChatMessage> pageResult = new Page<>(1, 20);
+        pageResult.setRecords(List.of(msg));
+        pageResult.setTotal(1);
+        pageResult.setPages(1);
+
+        when(conversationMapper.selectCount(any())).thenReturn(1L);
+        when(chatMessageMapper.selectPage(any(Page.class), any())).thenReturn(pageResult);
+
+        var result = chatService.getMessages("conv-1", 1, 20);
+
+        assertEquals(1, result.messages().size());
+        assertEquals("hello", result.messages().get(0).content());
+        assertFalse(result.hasMore());
+        assertEquals(1, result.total());
+    }
+
+    @Test
+    void getMessages_hasMorePages_shouldReturnTrue() {
+        ChatMessage msg = new ChatMessage();
+        msg.setId(1L);
+        msg.setRole("user");
+        msg.setContent("hello");
+
+        Page<ChatMessage> pageResult = new Page<>(1, 20);
+        pageResult.setRecords(List.of(msg));
+        pageResult.setTotal(50);
+        pageResult.setPages(3);
+
+        when(conversationMapper.selectCount(any())).thenReturn(1L);
+        when(chatMessageMapper.selectPage(any(Page.class), any())).thenReturn(pageResult);
+
+        var result = chatService.getMessages("conv-1", 1, 20);
+
+        assertTrue(result.hasMore());
+        assertEquals(50, result.total());
+    }
+
     // ===== deleteConversation() =====
 
     @Test
-    void deleteConversation_shouldDeleteMessagesThenConversation() {
+    void deleteConversation_shouldClearMemoryAndDeleteConversation() {
         when(conversationMapper.selectCount(any())).thenReturn(1L);
 
         chatService.deleteConversation("conv-1");
 
-        verify(chatMessageMapper).delete(any());
+        verify(chatMemory).clear("conv-1");
         verify(conversationMapper).deleteById("conv-1");
     }
 
@@ -211,21 +225,15 @@ class ChatServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> chatService.deleteConversation("conv-1"));
 
-        verify(chatMessageMapper, never()).delete(any());
+        verify(chatMemory, never()).clear(anyString());
         verify(conversationMapper, never()).deleteById(anyString());
     }
 
-    // ===== 辅助方法 =====
+    // ===== helpers =====
 
     private ChatResponse mockAiResponse(String text) {
-        ChatResponse response = mock(ChatResponse.class);
-        Generation generation = mock(Generation.class);
-        var output = mock(org.springframework.ai.chat.messages.AssistantMessage.class);
-
-        when(response.getResult()).thenReturn(generation);
-        when(generation.getOutput()).thenReturn(output);
-        when(output.getText()).thenReturn(text);
-
-        return response;
+        AssistantMessage message = new AssistantMessage(text);
+        Generation generation = new Generation(message);
+        return new ChatResponse(List.of(generation));
     }
 }

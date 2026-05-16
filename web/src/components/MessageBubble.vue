@@ -6,6 +6,7 @@
     <div class="content">
       <div v-if="message.role === 'assistant'" v-html="renderedContent"></div>
       <div v-else>{{ message.content }}</div>
+      <span v-if="message.createdAt" class="timestamp">{{ formatTime(message.createdAt) }}</span>
     </div>
   </div>
 </template>
@@ -36,6 +37,21 @@ const renderedContent = computed(() => {
   if (!props.message.content) return '<span class="typing-indicator">...</span>'
   return md.render(props.message.content)
 })
+
+function formatTime(dateStr) {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHour = Math.floor(diffMs / 3600000)
+  const diffDay = Math.floor(diffMs / 86400000)
+
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  if (diffHour < 24) return `${diffHour}小时前`
+  if (diffDay < 7) return `${diffDay}天前`
+  return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 </script>
 
 <style scoped>
@@ -113,6 +129,18 @@ const renderedContent = computed(() => {
 
 .content :deep(p) {
   margin: 4px 0;
+}
+
+.timestamp {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-secondary, #999);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.user .timestamp {
+  text-align: left;
 }
 
 .typing-indicator {

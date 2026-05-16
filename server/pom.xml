@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <spring-ai.version>1.0.0</spring-ai.version>
+        <spring-ai.version>1.1.0-SNAPSHOT</spring-ai.version>
     </properties>
 
     <dependencyManagement>
@@ -45,6 +45,13 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-deepseek</artifactId>
+        </dependency>
+
+        <!-- Spring AI Chat Client (ChatClient, ChatMemory, MessageChatMemoryAdvisor) -->
+        <!-- 显式声明让 IDE 正确解析传递依赖中的 ChatMemory/Advisor 类 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-client-chat</artifactId>
         </dependency>
 
         <!-- Spring Boot Validation -->
@@ -110,6 +117,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

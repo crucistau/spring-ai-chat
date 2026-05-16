@@ -2,6 +2,7 @@ package com.example.chat.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.chat.dto.*;
 import com.example.chat.entity.ChatMessage;
 import com.example.chat.entity.Conversation;
@@ -9,38 +10,31 @@ import com.example.chat.mapper.ChatMessageMapper;
 import com.example.chat.mapper.ConversationMapper;
 import com.example.chat.service.ChatService;
 import com.example.chat.util.UserContext;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.deepseek.DeepSeekChatModel;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 public class ChatServiceImpl implements ChatService {
 
-    @Value("classpath:prompts/system-prompt.st")
-    private Resource systemPromptResource;
-
-    private final DeepSeekChatModel chatModel;
+    private final ChatClient chatClient;
+    private final ChatMemory chatMemory;
     private final ConversationMapper conversationMapper;
     private final ChatMessageMapper chatMessageMapper;
 
-    public ChatServiceImpl(DeepSeekChatModel chatModel,
-                           ConversationMapper conversationMapper,
-                           ChatMessageMapper chatMessageMapper) {
-        this.chatModel = chatModel;
+    public ChatServiceImpl(ChatClient chatClient,
+                            ChatMemory chatMemory,
+                            ConversationMapper conversationMapper,
+                            ChatMessageMapper chatMessageMapper) {
+        this.chatClient = chatClient;
+        this.chatMemory = chatMemory;
         this.conversationMapper = conversationMapper;
         this.chatMessageMapper = chatMessageMapper;
     }
@@ -51,16 +45,13 @@ public class ChatServiceImpl implements ChatService {
         String conversationId = resolveConversationId(request.conversationId());
         ensureConversationExists(userId, conversationId, request.message());
 
-        chatMessageMapper.insert(new ChatMessage(conversationId, "user", request.message()));
+        String content = chatClient.prompt()
+                .user(request.message())
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                .call()
+                .content();
 
-        List<Message> messages = buildPromptMessages(conversationId);
-        Prompt prompt = new Prompt(messages);
-        var response = chatModel.call(prompt);
-        String responseContent = response.getResult().getOutput().getText();
-
-        chatMessageMapper.insert(new ChatMessage(conversationId, "assistant", responseContent));
-
-        return ChatResponse.of(responseContent, conversationId, "deepseek-chat");
+        return ChatResponse.of(content, conversationId, "deepseek-chat");
     }
 
     @Override
@@ -69,34 +60,23 @@ public class ChatServiceImpl implements ChatService {
         String conversationId = resolveConversationId(request.conversationId());
         ensureConversationExists(userId, conversationId, request.message());
 
-        chatMessageMapper.insert(new ChatMessage(conversationId, "user", request.message()));
-
-        List<Message> messages = buildPromptMessages(conversationId);
-        Prompt prompt = new Prompt(messages);
-
         SseEmitter emitter = new SseEmitter(0L);
-        StringBuilder fullResponse = new StringBuilder();
 
-        chatModel.stream(prompt)
+        chatClient.prompt()
+                .user(request.message())
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                .stream()
+                .content()
                 .subscribe(
-                        chatResponse -> {
-                            String content = chatResponse.getResult().getOutput().getText();
-                            if (content != null) {
-                                fullResponse.append(content);
-                                try {
-                                    emitter.send(content);
-                                } catch (IOException e) {
-                                    throw new RuntimeException("SSE send failed", e);
-                                }
+                        chunk -> {
+                            try {
+                                emitter.send(chunk);
+                            } catch (IOException e) {
+                                emitter.completeWithError(e);
                             }
                         },
                         emitter::completeWithError,
-                        () -> {
-                            if (!fullResponse.isEmpty()) {
-                                chatMessageMapper.insert(new ChatMessage(conversationId, "assistant", fullResponse.toString()));
-                            }
-                            emitter.complete();
-                        }
+                        emitter::complete
                 );
 
         return emitter;
@@ -115,17 +95,25 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public List<ChatMessageResponse> getMessages(String conversationId) {
+    public MessagePageResponse getMessages(String conversationId, int page, int size) {
         Long userId = requireCurrentUser();
         verifyOwnership(userId, conversationId);
 
         LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ChatMessage::getConversationId, conversationId)
-               .orderByAsc(ChatMessage::getCreatedAt);
-        return chatMessageMapper.selectList(wrapper)
+               .orderByDesc(ChatMessage::getCreatedAt);
+
+        Page<ChatMessage> pageResult = chatMessageMapper.selectPage(new Page<>(page, size), wrapper);
+
+        List<ChatMessageResponse> messages = pageResult.getRecords()
                 .stream()
-                .map(m -> new ChatMessageResponse(m.getId(), m.getRole(), m.getContent()))
+                .map(m -> new ChatMessageResponse(m.getId(), m.getRole(), m.getContent(), m.getCreatedAt()))
                 .toList();
+
+        List<ChatMessageResponse> chronological = new java.util.ArrayList<>(messages);
+        Collections.reverse(chronological);
+
+        return new MessagePageResponse(chronological, page < pageResult.getPages(), pageResult.getTotal());
     }
 
     @Override
@@ -133,9 +121,7 @@ public class ChatServiceImpl implements ChatService {
         Long userId = requireCurrentUser();
         verifyOwnership(userId, conversationId);
 
-        LambdaQueryWrapper<ChatMessage> msgWrapper = new LambdaQueryWrapper<>();
-        msgWrapper.eq(ChatMessage::getConversationId, conversationId);
-        chatMessageMapper.delete(msgWrapper);
+        chatMemory.clear(conversationId);
         conversationMapper.deleteById(conversationId);
     }
 
@@ -196,30 +182,5 @@ public class ChatServiceImpl implements ChatService {
             return message;
         }
         return message.substring(0, maxLen) + "...";
-    }
-
-    private String loadSystemPrompt() {
-        try {
-            return systemPromptResource.getContentAsString(StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to load system prompt", e);
-        }
-    }
-
-    private List<Message> buildPromptMessages(String conversationId) {
-        LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ChatMessage::getConversationId, conversationId)
-               .orderByAsc(ChatMessage::getCreatedAt);
-        List<ChatMessage> savedMessages = chatMessageMapper.selectList(wrapper);
-
-        List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(loadSystemPrompt()));
-        for (ChatMessage msg : savedMessages) {
-            switch (msg.getRole()) {
-                case "user" -> messages.add(new UserMessage(msg.getContent()));
-                case "assistant" -> messages.add(new AssistantMessage(msg.getContent()));
-            }
-        }
-        return messages;
     }
 }
